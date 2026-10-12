@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#040a12">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>J.A.R.V.I.S.</title>
+<script src="https://js.puter.com/v2/"></script>
+<style>
+:root{--c:#2ee6ff;--bg:#040a12;--p:#0a1a2b;--t:#d4ecff;--d:#6f8ea8;--w:#ffb347}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{padding-top:env(safe-area-inset-top)}
+body{background:radial-gradient(ellipse at 50% -10%,#0d2a47,var(--bg) 65%);color:var(--t);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;flex-direction:column;max-width:780px;margin:auto}
+header{display:flex;align-items:center;gap:14px;padding:14px 16px 8px}
+.core{width:56px;height:56px;border-radius:50%;border:2px solid var(--c);box-shadow:0 0 18px var(--c),inset 0 0 14px var(--c);position:relative;flex:none;transition:.3s}
+.core:before{content:"";position:absolute;inset:8px;border-radius:50%;border:2px dashed var(--c);animation:spin 7s linear infinite}
+.core:after{content:"";position:absolute;inset:21px;border-radius:50%;background:var(--c);box-shadow:0 0 14px var(--c)}
+.core.talk{animation:pulse .6s ease-in-out infinite alternate}
+.core.think:before{animation-duration:1.2s;border-color:var(--w)}
+.core.listen{border-color:#7dff9b;box-shadow:0 0 22px #7dff9b,inset 0 0 14px #7dff9b}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{to{transform:scale(1.14);box-shadow:0 0 36px var(--c),inset 0 0 22px var(--c)}}
+@media(prefers-reduced-motion:reduce){.core,.core:before{animation:none!important}}
+h1{font-size:19px;letter-spacing:.32em;color:var(--c);font-weight:600}
+#st{font-size:12px;color:var(--d)}
+nav{display:flex;gap:8px;padding:4px 16px 10px;flex-wrap:wrap}
+button{font:inherit;color:var(--t);background:var(--p);border:1px solid #17405f;border-radius:8px;padding:7px 12px;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--c);outline-offset:2px}
+button.on{border-color:var(--c);color:var(--c);box-shadow:0 0 10px #2ee6ff55}
+#log{flex:1;overflow-y:auto;padding:8px 16px;display:flex;flex-direction:column;gap:10px}
+.m{max-width:86%;padding:9px 13px;border-radius:12px;white-space:pre-wrap;word-wrap:break-word}
+.j{align-self:flex-start;background:var(--p);border-left:3px solid var(--c)}
+.u{align-self:flex-end;background:#12385a}
+.e{border-left-color:var(--w);color:var(--w)}
+form{display:flex;gap:8px;padding:10px 16px 16px}
+input{flex:1;min-width:0;font:inherit;color:var(--t);background:var(--p);border:1px solid #17405f;border-radius:8px;padding:11px 12px}
+#mic.rec{background:#12532a;border-color:#7dff9b}
+#pan{position:fixed;inset:0;background:#000b;display:none;align-items:center;justify-content:center;padding:16px}
+#pan.open{display:flex}
+#box{background:var(--bg);border:1px solid var(--c);border-radius:12px;width:100%;max-width:480px;max-height:80vh;overflow:auto;padding:16px}
+#box h2{font-size:16px;color:var(--c);margin-bottom:10px}
+.it{display:flex;gap:8px;justify-content:space-between;padding:8px 0;border-bottom:1px solid #17405f}
+.it small{color:var(--d);display:block}
+.row{display:flex;gap:8px;margin-top:12px}
+</style>
+</head>
+<body>
+<header>
+  <div class="core" id="core"></div>
+  <div><h1>J.A.R.V.I.S.</h1><div id="st">Sistemas online</div></div>
+</header>
+<nav>
+  <button id="bv" class="on">Voz ligada</button>
+  <button id="bt">Modo conversa</button>
+  <button id="bm">Memória</button>
+</nav>
+<div id="log" aria-live="polite"></div>
+<form id="f">
+  <button type="button" id="mic" title="Falar">Falar</button>
+  <input id="in" placeholder="Digite ou fale com o Jarvis…" autocomplete="off">
+  <button>Enviar</button>
+</form>
+
+<div id="pan"><div id="box">
+  <h2>Memória do Jarvis</h2>
+  <div id="ml"></div>
+  <div class="row"><button id="mc">Apagar memórias</button><button id="mh">Limpar conversa</button><button id="mx">Fechar</button></div>
+</div></div>
+
+<script>
+const $=s=>document.querySelector(s);
+const rd=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}};
+const wr=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+let mem=rd('j_mem',[]), hist=rd('j_hist',[]), voice=rd('j_voice',true), talk=false, busy=false, listening=false, rec=null;
+const core=$('#core'), log=$('#log');
+const setCore=c=>{core.className='core '+(c||'')};
+const status=t=>$('#st').textContent=t;
+
+function add(cls,text){const d=document.createElement('div');d.className='m '+cls;d.textContent=text;log.append(d);log.scrollTop=log.scrollHeight}
+hist.slice(-8).forEach(m=>add(m.role==='user'?'u':'j',m.content));
+add('j','Sistemas online. Em que posso ajudar, senhor?');
+
+/* ---------- voz (texto para fala) ---------- */
+function speak(text,done){
+  if(!voice||!window.speechSynthesis){done&&done();return}
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text.replace(/[*_#`>]/g,''));
+  const vs=speechSynthesis.getVoices();
+  const v=vs.find(v=>v.lang.replace('_','-')==='pt-BR')||vs.find(v=>v.lang.startsWith('pt'));
+  if(v)u.voice=v; u.lang='pt-BR'; u.rate=1.02; u.pitch=.9;
+  u.onstart=()=>{setCore('talk');status('Falando…')};
+  u.onend=u.onerror=()=>{setCore();status('Sistemas online');done&&done()};
+  speechSynthesis.speak(u);
+}
+function say(text){
+  add('j',text);
+  speak(text,()=>{busy=false;if(talk)listen()});
+  if(!voice){busy=false;if(talk)listen()}
+}
+
+/* ---------- reconhecimento de voz ---------- */
+function listen(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){add('j e','Este navegador não reconhece voz. Use o Chrome ou o Edge.');talk=false;$('#bt').classList.remove('on');return}
+  if(listening||busy)return;
+  rec=new SR(); rec.lang='pt-BR'; rec.interimResults=true;
+  rec.onstart=()=>{listening=true;$('#mic').classList.add('rec');setCore('listen');status('Ouvindo…')};
+  rec.onresult=e=>{
+    let t='';for(const r of e.results)t+=r[0].transcript;
+    $('#in').value=t;
+    if(e.results[e.results.length-1].isFinal){$('#in').value='';send(t)}
+  };
+  rec.onerror=e=>{if(e.error==='not-allowed'||e.error==='service-not-allowed'){talk=false;$('#bt').classList.remove('on');add('j e','Permita o uso do microfone no navegador, senhor.')}};
+  rec.onend=()=>{listening=false;$('#mic').classList.remove('rec');if(!busy){setCore();status('Sistemas online')}
+    if(talk&&!busy)setTimeout(listen,300)};
+  try{rec.start()}catch(e){}
+}
+
+/* ---------- memória ---------- */
+function saveMem(){wr('j_mem',mem)}
+function renderMem(){
+  $('#ml').innerHTML=mem.length?'':'<p style="color:var(--d)">Nada guardado ainda. Diga: "lembre que meu aniversário é em 5 de maio".</p>';
+  mem.forEach((m,i)=>{
+    const d=document.createElement('div');d.className='it';
+    const s=document.createElement('div');s.textContent=m.t;
+    const sm=document.createElement('small');sm.textContent=m.d;s.append(sm);
+    const b=document.createElement('button');b.textContent='Apagar';
+    b.onclick=()=>{mem.splice(i,1);saveMem();renderMem()};
+    d.append(s,b);$('#ml').append(d);
+  });
+}
+
+/* ---------- informações locais ---------- */
+const wmo=c=>c===0?'céu limpo':c<4?'parcialmente nublado':c<50?'neblina':c<60?'garoa':c<70?'chuva':c<80?'neve':c<90?'pancadas de chuva':'tempestade';
+function weather(){
+  if(!navigator.geolocation)return say('Meu acesso à localização está indisponível neste navegador, senhor.');
+  navigator.geolocation.getCurrentPosition(async p=>{
+    try{
+      const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${p.coords.latitude}&longitude=${p.coords.longitude}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&timezone=auto`);
+      const c=(await r.json()).current;
+      say(`Agora faz ${Math.round(c.temperature_2m)} graus, sensação de ${Math.round(c.apparent_temperature)}. Tempo: ${wmo(c.weather_code)}, vento de ${Math.round(c.wind_speed_10m)} quilômetros por hora.`);
+    }catch(e){say('Não consegui consultar a previsão do tempo agora, senhor.')}
+  },()=>say('Preciso da sua permissão de localização para consultar o clima, senhor.'));
+}
+
+/* ---------- inteligência artificial (gratuita) ---------- */
+const txt=r=>{if(typeof r==='string')return r;const c=r&&r.message&&r.message.content;return Array.isArray(c)?c.map(x=>x.text||'').join(''):(c||String(r))};
+async function ask(){
+  const sys=`Você é J.A.R.V.I.S., o assistente de IA sofisticado, educado e levemente espirituoso do estilo do Tony Stark. Responda sempre em português do Brasil, de forma concisa (até 3 frases, salvo se pedirem mais) e sem markdown, pois sua resposta será lida em voz alta. Trate o usuário por "senhor". Agora é ${new Date().toLocaleString('pt-BR')}. Informações que o usuário pediu para você guardar: ${mem.map(m=>m.t).join('; ')||'nenhuma'}.`;
+  const msgs=[{role:'system',content:sys},...hist.slice(-12)];
+  try{if(window.puter){return txt(await puter.ai.chat(msgs,{model:'gpt-4o-mini'}))}}catch(e){console.warn('Puter falhou',e)}
+  const r=await fetch('https://text.pollinations.ai/openai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'openai',messages:msgs})});
+  return (await r.json()).choices[0].message.content;
+}
+
+/* ---------- fluxo principal ---------- */
+async function send(text){
+  text=(text||'').trim();if(!text||busy)return;
+  if(rec&&listening)try{rec.stop()}catch(e){}
+  busy=true;add('u',text);
+  const n=text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  let m;
+  if(m=text.match(/^(?:jarvis[,]?\s*)?(?:lembre|guarde|anote|memorize)(?:-se)?(?:\s+que|:)?\s+(.+)/i)){
+    mem.push({t:m[1].trim(),d:new Date().toLocaleString('pt-BR')});saveMem();
+    return say(`Anotado, senhor: ${m[1].trim()}`);
+  }
+  if(/esqueca tudo|apague (a )?memoria|limpar memoria/.test(n)){mem=[];saveMem();return say('Memória apagada, senhor.')}
+  if(/o que (voce )?(sabe|lembra)|minhas memorias|o que anotou/.test(n))
+    return say(mem.length?'Tenho isto guardado: '+mem.map(x=>x.t).join('. ')+'.':'Ainda não há nada guardado, senhor.');
+  if(/que horas|hora atual|horas sao/.test(n))return say('São '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})+', senhor.');
+  if(/que dia|data de hoje|dia da semana/.test(n))return say('Hoje é '+new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+'.');
+  if(/clima|previsao do tempo|temperatura|esta calor|esta frio/.test(n)){setCore('think');status('Consultando satélites…');return weather()}
+
+  setCore('think');status('Processando…');
+  hist.push({role:'user',content:text});
+  try{
+    const a=(await ask()).trim();
+    hist.push({role:'assistant',content:a});hist=hist.slice(-30);wr('j_hist',hist);
+    say(a);
+  }catch(e){
+    hist.pop();setCore();status('Sistemas online');busy=false;
+    add('j e','Não consegui contato com o serviço de IA. Verifique a internet e tente de novo, senhor.');
+  }
+}
+
+/* ---------- eventos ---------- */
+$('#f').onsubmit=e=>{e.preventDefault();const t=$('#in').value;$('#in').value='';send(t)};
+$('#mic').onclick=()=>{if(listening){try{rec.stop()}catch(e){}}else{busy=false;listen()}};
+$('#bv').onclick=e=>{voice=!voice;wr('j_voice',voice);if(!voice)speechSynthesis.cancel();e.target.classList.toggle('on',voice);e.target.textContent=voice?'Voz ligada':'Voz desligada'};
+$('#bt').onclick=e=>{talk=!talk;e.target.classList.toggle('on',talk);if(talk){voice=true;$('#bv').classList.add('on');$('#bv').textContent='Voz ligada';listen()}else if(rec&&listening)try{rec.stop()}catch(x){}};
+$('#bm').onclick=()=>{renderMem();$('#pan').classList.add('open')};
+$('#mx').onclick=()=>$('#pan').classList.remove('open');
+$('#mc').onclick=()=>{mem=[];saveMem();renderMem()};
+$('#mh').onclick=()=>{hist=[];wr('j_hist',hist);log.innerHTML='';add('j','Conversa limpa. Sua memória permanece guardada, senhor.')};
+if(!voice){$('#bv').classList.remove('on');$('#bv').textContent='Voz desligada'}
+if(window.speechSynthesis)speechSynthesis.onvoiceschanged=()=>{};
+if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>
